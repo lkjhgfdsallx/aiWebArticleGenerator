@@ -1,0 +1,42 @@
+{
+  "name": "ai-novel-generator-backend",
+  "version": "1.0.0",
+  "description": "AI小说生成器后端服务",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "body-parser": "^1.20.2",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.2",
+    "openai": "^4.20.1",
+    "langchain": "^0.1.37",
+    "@langchain/openai": "^0.0.14",
+    "@langchain/community": "^0.0.20",
+    "chromadb": "^1.7.3",
+    "uuid": "^9.0.1",
+    "fs-extra": "^11.1.1",
+    "winston": "^3.11.0",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0"
+  },
+  "keywords": [
+    "ai",
+    "novel",
+    "generator",
+    "llm"
+  ],
+  "author": "AI Novel Generator Team",
+  "license": "MIT"
+}

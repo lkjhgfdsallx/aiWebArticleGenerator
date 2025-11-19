@@ -1,0 +1,11 @@
+{
+  "watch": ["./"],
+  "ext": "js,json",
+  "ignore": [
+    "novels/**/*",
+    "node_modules/**/*",
+    "uploads/**/*"
+  ],
+  "exec": "node app.js",
+  "delay": 1000
+}
