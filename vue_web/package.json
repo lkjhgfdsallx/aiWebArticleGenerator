@@ -28,7 +28,6 @@
     "prettier": "^3.0.3",
     "sass": "^1.69.5",
     "unplugin-auto-import": "^0.16.7",
-    "unplugin-vue-components": "^0.25.2",
-
+    "unplugin-vue-components": "^0.25.2"
   }
 }

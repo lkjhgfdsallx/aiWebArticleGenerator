@@ -312,15 +312,37 @@ async function finalizeChapter() {
   try {
     finalizing.value = true
 
-    const response = await api.post(`/novel/${novelId}/chapters/${chapterNumber}/finalize`, {
-      config: {
-        provider: 'openai', // 应该从全局配置获取
-        apiKey: '', // 应该从全局配置获取
-        baseURL: '', // 应该从全局配置获取
-        model: '', // 应该从全局配置获取
-        temperature: 0.7,
-        maxTokens: 4096
+    // 从本地存储获取LLM配置
+    let llmConfig = {
+      provider: 'openai',
+      apiKey: '',
+      baseURL: '',
+      model: '',
+      temperature: 0.7,
+      maxTokens: 4096,
+      timeout: 600
+    }
+
+    try {
+      const savedConfig = localStorage.getItem('ai_novel_generator_config')
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig)
+        if (config.llmConfigs && config.llmConfigs.default) {
+          const defaultConfig = config.llmConfigs.default
+          llmConfig.provider = defaultConfig.interfaceFormat || 'openai'
+          llmConfig.model = defaultConfig.modelName || 'gpt-4'
+          llmConfig.temperature = defaultConfig.temperature || 0.7
+          llmConfig.maxTokens = defaultConfig.maxTokens || 4096
+          llmConfig.apiKey = defaultConfig.apiKey || ''
+          llmConfig.baseURL = defaultConfig.baseUrl || 'https://api.openai.com/v1'
+        }
       }
+    } catch (error) {
+      console.error('加载配置失败:', error)
+    }
+
+    const response = await api.post(`/novel/${novelId}/chapters/${chapterNumber}/finalize`, {
+      config: llmConfig
     })
 
     ElMessage.success('章节定稿成功')

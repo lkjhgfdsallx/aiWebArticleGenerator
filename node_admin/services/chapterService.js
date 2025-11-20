@@ -207,6 +207,66 @@ class ChapterService {
         maxTokens: config.maxTokens
       });
 
+      // 获取小说架构和章节目录
+      const architectureFile = path.join(novelPath, 'Novel_architecture.txt');
+      const blueprintFile = path.join(novelPath, 'Novel_directory.txt');
+      
+      let architecture = '';
+      let blueprint = '';
+      
+      if (await fs.pathExists(architectureFile)) {
+        architecture = await fs.readFile(architectureFile, 'utf8');
+      }
+      
+      if (await fs.pathExists(blueprintFile)) {
+        blueprint = await fs.readFile(blueprintFile, 'utf8');
+      }
+
+      // 解析当前章节信息
+      const chapterInfo = this.parseChapterInfo(blueprint, chapterNumber);
+
+      // 获取前几章内容
+      const recentChapters = await this.getRecentChapters(chaptersPath, chapterNumber, 3);
+      const previousChapter = recentChapters.length > 0 ? recentChapters[recentChapters.length - 1] : '';
+
+      // 生成章节优化提示词
+      const optimizePrompt = `请优化以下章节内容，确保其符合小说设定和章节目录要求：
+
+章节信息：
+第${chapterNumber}章《${chapterInfo.title}》
+本章定位：${chapterInfo.role}
+核心作用：${chapterInfo.purpose}
+悬念密度：${chapterInfo.suspenseLevel}
+伏笔操作：${chapterInfo.foreshadowing}
+认知颠覆：${chapterInfo.plotTwistLevel}
+本章简述：${chapterInfo.summary}
+
+小说设定：
+${architecture}
+
+前一章结尾（供参考）：
+${previousChapter.slice(-800)}
+
+当前章节内容：
+${chapterContent}
+
+请优化以上章节内容，要求：
+1. 保持与小说设定的一致性
+2. 确保符合章节目录中定义的定位、作用和悬念密度
+3. 保持与前一章的连贯性
+4. 优化文笔，增强表现力和可读性
+5. 保持核心情节不变，但可以调整细节描写
+6. 确保字数符合要求
+
+仅返回优化后的章节正文文本，不要使用markdown格式，不要添加解释。`;
+
+      // 优化章节内容
+      console.info(`优化章节内容 - 小说ID: ${novelId}, 章节: ${chapterNumber}`);
+      const optimizedContent = await llmAdapter.invoke(optimizePrompt);
+
+      // 保存优化后的章节内容
+      await fs.writeFile(chapterFile, optimizedContent);
+
       // 更新全局摘要
       const globalSummaryFile = path.join(novelPath, 'global_summary.txt');
       let globalSummary = '';
@@ -216,7 +276,7 @@ class ChapterService {
       }
 
       const summaryPrompt = prompts.summaryPrompt
-        .replace('{chapter_text}', chapterContent)
+        .replace('{chapter_text}', optimizedContent)
         .replace('{global_summary}', globalSummary);
 
       const newGlobalSummary = await llmAdapter.invoke(summaryPrompt);
@@ -231,14 +291,14 @@ class ChapterService {
       }
 
       const characterStatePrompt = prompts.updateCharacterStatePrompt
-        .replace('{chapter_text}', chapterContent)
+        .replace('{chapter_text}', optimizedContent)
         .replace('{old_state}', characterState);
 
       const newCharacterState = await llmAdapter.invoke(characterStatePrompt);
       await fs.writeFile(characterStateFile, newCharacterState);
 
       // 更新向量存储
-      await this.vectorStoreManager.addDocuments(novelId, [chapterContent], [
+      await this.vectorStoreManager.addDocuments(novelId, [optimizedContent], [
         { 
           type: 'chapter', 
           chapterNumber: chapterNumber,

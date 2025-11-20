@@ -121,7 +121,22 @@ class DeepSeekAdapter extends BaseLLMAdapter {
         }
       );
 
-      return response.data.choices[0].message.content;
+      // 检查响应格式
+      if (!response.data) {
+        throw new Error('DeepSeek API返回空响应');
+      }
+      
+      // 处理可能的响应格式差异
+      if (response.data.choices && response.data.choices.length > 0) {
+        return response.data.choices[0].message.content;
+      } else if (response.data.content) {
+        return response.data.content;
+      } else if (response.data.output && response.data.output.text) {
+        return response.data.output.text;
+      } else {
+        console.error('DeepSeek API返回的响应格式:', JSON.stringify(response.data, null, 2));
+        throw new Error('无法解析DeepSeek API响应格式');
+      }
     } catch (error) {
       console.error('DeepSeek API调用错误:', error);
       throw error;
