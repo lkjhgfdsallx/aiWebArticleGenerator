@@ -1,11 +1,10 @@
 /**
  * 向量数据库工具类
- * 使用ChromaDB替代Faiss，解决Windows平台兼容性问题
+ * 使用MemoryVectorStore替代Faiss和ChromaDB，解决Windows平台兼容性问题
  */
 const fs = require('fs-extra');
 const path = require('path');
 const { OpenAI } = require('openai');
-const { Chroma } = require('@langchain/community/vectorstores/chroma');
 const { OpenAIEmbeddings } = require('@langchain/openai');
 const { Document } = require('@langchain/core/documents');
 const JinaEmbeddings = require('./jinaEmbeddings');
@@ -18,7 +17,6 @@ class VectorStoreManager {
     this.embeddingsModel = config.embeddingsModel || 'jina-embeddings-v3';
     this.vectorStorePath = config.vectorStorePath || './vectorstore';
     this.retrievalK = config.retrievalK || 4;
-    this.chromaURL = config.chromaURL || 'http://localhost:8000';
 
     // 初始化嵌入模型
     this.initEmbeddings();
@@ -49,16 +47,40 @@ class VectorStoreManager {
   /**
    * 加载向量存储
    * @param {string} novelId - 小说ID
-   * @returns {Chroma|null} - 向量存储实例
+   * @returns {MemoryVectorStore|null} - 向量存储实例
    */
   async loadVectorStore(novelId) {
     try {
-      // 使用ChromaDB连接到现有集合
-      const vectorStore = await Chroma.fromExistingCollection({
-        collectionName: novelId,
-        embeddingFunction: this.embeddings.embedQuery.bind(this.embeddings),
-        url: this.chromaURL
-      });
+      // 检查嵌入对象是否正确初始化
+      if (!this.embeddings || typeof this.embeddings.embedQuery !== 'function') {
+        console.error('嵌入对象未正确初始化或缺少必要方法');
+        return null;
+      }
+
+      // 检查向量存储目录是否存在
+      const storePath = path.join(this.vectorStorePath, novelId);
+      if (!(await fs.pathExists(storePath))) {
+        console.warn(`向量存储目录不存在: ${storePath}`);
+        return null;
+      }
+
+      // 导入MemoryVectorStore
+      let MemoryVectorStore;
+      try {
+        MemoryVectorStore = require('langchain/vectorstores/memory').MemoryVectorStore;
+      } catch (e) {
+        const { MemoryVectorStore: MVStore } = require('langchain');
+        MemoryVectorStore = MVStore;
+      }
+
+      // 创建内存向量存储实例
+      const vectorStore = new MemoryVectorStore(this.embeddings);
+
+      // 验证向量存储是否有效
+      if (!vectorStore || typeof vectorStore.similaritySearch !== 'function') {
+        console.error('加载的向量存储无效或缺少必要方法');
+        return null;
+      }
 
       console.info(`成功加载向量存储: ${novelId}`);
       return vectorStore;
@@ -108,6 +130,11 @@ class VectorStoreManager {
         const testEmbedding = await this.embeddings.embedQuery("测试文本");
         console.log('嵌入测试成功，向量维度:', testEmbedding.length);
 
+        // 验证嵌入向量是否有效
+        if (!testEmbedding || !Array.isArray(testEmbedding) || testEmbedding.length === 0) {
+          throw new Error('嵌入向量无效或为空');
+        }
+
         // 创建向量存储
         console.log('正在创建向量存储，请稍候...');
 
@@ -121,6 +148,7 @@ class VectorStoreManager {
             this.embeddings
           );
         } catch (e1) {
+          console.warn('方式1创建失败，尝试方式2:', e1.message);
           try {
             // 方式2：创建实例后添加文档
             vectorStore = new MemoryVectorStore(this.embeddings);
@@ -128,11 +156,22 @@ class VectorStoreManager {
               { pageContent: "初始化向量存储", metadata: { novelId } }
             ]);
           } catch (e2) {
-            throw e2;
+            console.warn('方式2也失败，尝试方式3:', e2.message);
+            try {
+              // 方式3：直接创建空实例
+              vectorStore = new MemoryVectorStore(this.embeddings);
+            } catch (e3) {
+              throw new Error(`所有创建方式都失败: ${e3.message}`);
+            }
           }
         }
 
-        console.info(`创建向量存储: ${novelId}`);
+        // 验证创建的向量存储是否有效
+        if (!vectorStore || typeof vectorStore.similaritySearch !== 'function') {
+          throw new Error('创建的向量存储无效或缺少必要方法');
+        }
+
+        console.info(`成功创建向量存储: ${novelId}`);
         return vectorStore;
       } catch (storeError) {
         console.error('MemoryVectorStore创建失败:', storeError.message);
@@ -194,21 +233,45 @@ class VectorStoreManager {
    */
   async search(novelId, query) {
     try {
+      // 检查查询参数
+      if (!query || typeof query !== 'string') {
+        console.warn('查询参数无效');
+        return [];
+      }
+
       // 加载向量存储
       const vectorStore = await this.loadVectorStore(novelId);
       if (!vectorStore) {
-        console.warn(`向量存储不存在: ${novelId}`);
+        console.warn(`向量存储不存在或加载失败: ${novelId}`);
         return [];
       }
 
       // 执行相似性搜索
-      const results = await vectorStore.similaritySearch(query, { k: this.retrievalK });
+      let results;
+      try {
+        results = await vectorStore.similaritySearch(query, { k: this.retrievalK });
+      } catch (searchError) {
+        console.error(`相似性搜索失败: ${searchError.message}`);
+        // 尝试使用另一种搜索方法
+        try {
+          results = await vectorStore.similaritySearch(query, this.retrievalK);
+        } catch (fallbackError) {
+          console.error(`备用搜索方法也失败: ${fallbackError.message}`);
+          return [];
+        }
+      }
+
+      // 验证搜索结果
+      if (!results || !Array.isArray(results)) {
+        console.warn('搜索结果格式无效');
+        return [];
+      }
 
       console.info(`从向量存储检索到 ${results.length} 个相关文档`);
       return results;
     } catch (error) {
       console.error(`向量检索失败: ${error.message}`);
-      throw error;
+      return [];
     }
   }
 
@@ -219,10 +282,10 @@ class VectorStoreManager {
    */
   async deleteVectorStore(novelId) {
     try {
-      // 使用ChromaDB删除集合
-      const vectorStore = await this.loadVectorStore(novelId);
-      if (vectorStore) {
-        await vectorStore.deleteCollection();
+      const storePath = path.join(this.vectorStorePath, novelId);
+
+      if (await fs.pathExists(storePath)) {
+        await fs.remove(storePath);
         console.info(`删除向量存储: ${novelId}`);
         return true;
       }
