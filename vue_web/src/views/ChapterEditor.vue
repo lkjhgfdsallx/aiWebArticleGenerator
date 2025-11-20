@@ -6,6 +6,14 @@
           <el-button 
             type="primary" 
             :disabled="!hasDraft"
+            @click="saveChapter"
+            :loading="finalizing"
+          >
+            保存修改
+          </el-button>
+          <el-button
+            type="primary"
+            :disabled="!hasDraft"
             @click="finalizeChapter"
             :loading="finalizing"
           >
@@ -155,6 +163,7 @@ const knowledgeResults = ref([])
 const hasDraft = ref(false)
 const generating = ref(false)
 const finalizing = ref(false)
+const saving = ref(false)
 
 // 编辑器实例
 const editorRef = ref(null)
@@ -304,6 +313,32 @@ async function generateDraft() {
     ElMessage.error('生成章节草稿失败')
   } finally {
     generating.value = false
+  }
+}
+
+// 保存章节内容
+async function saveChapter() {
+  try {
+    saving.value = true
+    
+    // 获取编辑器内容
+    const content = editorContent.value
+    
+    if (!content || content.trim() === '') {
+      ElMessage.warning('章节内容不能为空')
+      return
+    }
+
+    const response = await api.put(`/novel/${novelId}/chapters/${chapterNumber}`, {
+      content: content
+    })
+
+    hasDraft.value = true
+    ElMessage.success('章节内容保存成功')
+  } catch (error) {
+    ElMessage.error('保存章节内容失败')
+  } finally {
+    saving.value = false
   }
 }
 

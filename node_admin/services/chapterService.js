@@ -511,6 +511,36 @@ ${chapterContent}
   }
 
   /**
+   * 保存章节内容
+   * @param {string} novelId - 小说ID
+   * @param {number} chapterNumber - 章节号
+   * @param {string} content - 章节内容
+   * @returns {object} - 保存结果
+   */
+  async saveChapterContent(novelId, chapterNumber, content) {
+    try {
+      const novelPath = path.join(this.novelsPath, novelId);
+      const chaptersPath = path.join(novelPath, 'chapters');
+      
+      // 确保章节目录存在
+      await fs.ensureDir(chaptersPath);
+      
+      // 保存章节内容
+      const chapterFile = path.join(chaptersPath, `chapter_${chapterNumber}.txt`);
+      await fs.writeFile(chapterFile, content);
+      
+      console.info(`章节内容保存完成 - 小说ID: ${novelId}, 章节: ${chapterNumber}`);
+      return {
+        success: true,
+        message: '章节内容保存成功'
+      };
+    } catch (error) {
+      console.error('保存章节内容失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 获取相关知识
    * @param {string} novelId - 小说ID
    * @param {object} chapterInfo - 章节信息

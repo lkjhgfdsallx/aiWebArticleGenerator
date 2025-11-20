@@ -88,4 +88,30 @@ router.get('/:novelId/chapters', async (req, res) => {
   }
 });
 
+// 保存章节内容
+router.put('/:novelId/chapters/:chapterNumber', async (req, res) => {
+  try {
+    const { novelId, chapterNumber } = req.params;
+    const { content } = req.body;
+
+    // 验证必填字段
+    if (!content) {
+      return res.status(400).json({
+        error: '缺少章节内容',
+        required: ['content']
+      });
+    }
+
+    const result = await chapterService.saveChapterContent(
+      novelId,
+      parseInt(chapterNumber),
+      content
+    );
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('保存章节内容失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
