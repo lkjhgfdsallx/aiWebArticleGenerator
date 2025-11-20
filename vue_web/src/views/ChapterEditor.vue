@@ -399,7 +399,7 @@ async function searchKnowledge() {
   }
 
   try {
-    const response = await api.get(`/novel/${novelId}/knowledge/search?query=${encodeURIComponent(knowledgeQuery.value)}`)
+    const response = await api.get(`/novel/${novelId}/search?query=${encodeURIComponent(knowledgeQuery.value)}`)
     knowledgeResults.value = response.data || response
   } catch (error) {
     ElMessage.error('搜索知识库失败')

@@ -64,6 +64,20 @@ class VectorStoreManager {
         return null;
       }
 
+      // 尝试从文件加载向量存储数据
+      const vectorDataPath = path.join(storePath, 'vector_data.json');
+      if (!(await fs.pathExists(vectorDataPath))) {
+        console.warn(`向量存储数据文件不存在: ${vectorDataPath}`);
+        return null;
+      }
+
+      // 读取向量存储数据
+      const vectorData = await fs.readJson(vectorDataPath);
+      if (!vectorData || !Array.isArray(vectorData.documents)) {
+        console.warn(`向量存储数据格式无效: ${vectorDataPath}`);
+        return null;
+      }
+
       // 导入MemoryVectorStore
       let MemoryVectorStore;
       try {
@@ -76,13 +90,22 @@ class VectorStoreManager {
       // 创建内存向量存储实例
       const vectorStore = new MemoryVectorStore(this.embeddings);
 
+      // 从保存的数据中重建文档
+      if (vectorData.documents.length > 0) {
+        const { Document } = require('@langchain/core/documents');
+        const documents = vectorData.documents.map(doc => 
+          new Document({ pageContent: doc.pageContent, metadata: doc.metadata })
+        );
+        await vectorStore.addDocuments(documents);
+      }
+
       // 验证向量存储是否有效
       if (!vectorStore || typeof vectorStore.similaritySearch !== 'function') {
         console.error('加载的向量存储无效或缺少必要方法');
         return null;
       }
 
-      console.info(`成功加载向量存储: ${novelId}`);
+      console.info(`成功加载向量存储: ${novelId}，包含 ${vectorData.documents.length} 个文档`);
       return vectorStore;
     } catch (error) {
       console.error(`加载向量存储失败: ${error.message}`);
@@ -93,7 +116,7 @@ class VectorStoreManager {
   /**
    * 创建新的向量存储
    * @param {string} novelId - 小说ID
-   * @returns {Chroma} - 向量存储实例
+   * @returns {MemoryVectorStore} - 向量存储实例
    */
   async createVectorStore(novelId) {
     try {
@@ -110,6 +133,10 @@ class VectorStoreManager {
       if (typeof this.embeddings.embedQuery !== 'function') {
         throw new Error('嵌入对象缺少必要的方法');
       }
+
+      // 确保向量存储目录存在
+      const storePath = path.join(this.vectorStorePath, novelId);
+      await fs.ensureDir(storePath);
 
       // 使用简单的内存向量存储代替ChromaDB
       let MemoryVectorStore;
@@ -171,6 +198,16 @@ class VectorStoreManager {
           throw new Error('创建的向量存储无效或缺少必要方法');
         }
 
+        // 保存向量存储元数据
+        const vectorDataPath = path.join(storePath, 'vector_data.json');
+        await fs.writeJson(vectorDataPath, {
+          novelId,
+          createdAt: new Date().toISOString(),
+          embeddingsProvider: this.embeddingsProvider,
+          embeddingsModel: this.embeddingsModel,
+          documents: [] // 初始为空，将在添加文档时更新
+        });
+
         console.info(`成功创建向量存储: ${novelId}`);
         return vectorStore;
       } catch (storeError) {
@@ -214,10 +251,41 @@ class VectorStoreManager {
         });
       });
 
-      // 添加文档
+      // 添加文档到内存向量存储
       await vectorStore.addDocuments(documents);
 
-      console.info(`向向量存储添加了 ${documents.length} 个文档`);
+      // 保存文档数据到磁盘
+      const storePath = path.join(this.vectorStorePath, novelId);
+      const vectorDataPath = path.join(storePath, 'vector_data.json');
+      
+      // 读取现有数据
+      let vectorData;
+      try {
+        vectorData = await fs.readJson(vectorDataPath);
+      } catch (e) {
+        // 如果文件不存在或格式错误，创建新数据结构
+        vectorData = {
+          novelId,
+          createdAt: new Date().toISOString(),
+          embeddingsProvider: this.embeddingsProvider,
+          embeddingsModel: this.embeddingsModel,
+          documents: []
+        };
+      }
+      
+      // 添加新文档
+      const newDocs = documents.map(doc => ({
+        pageContent: doc.pageContent,
+        metadata: doc.metadata
+      }));
+      
+      vectorData.documents = [...(vectorData.documents || []), ...newDocs];
+      vectorData.updatedAt = new Date().toISOString();
+      
+      // 保存到磁盘
+      await fs.writeJson(vectorDataPath, vectorData);
+
+      console.info(`向向量存储添加了 ${documents.length} 个文档，总计 ${vectorData.documents.length} 个文档`);
       return true;
     } catch (error) {
       console.error(`添加文档到向量存储失败: ${error.message}`);
