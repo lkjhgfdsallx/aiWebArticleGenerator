@@ -12,21 +12,21 @@ const chapterService = new ChapterService();
 router.post('/:novelId/chapters/:chapterNumber/draft', async (req, res) => {
   try {
     const { novelId, chapterNumber } = req.params;
-    const { config, chapterParams } = req.body;
+    const { config, userGuidance } = req.body;
 
     // 验证必填字段
     if (!config || !config.provider || !config.apiKey) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: '缺少LLM配置',
         required: ['config.provider', 'config.apiKey']
       });
     }
 
     const result = await chapterService.generateChapterDraft(
-      novelId, 
-      parseInt(chapterNumber), 
-      config, 
-      chapterParams || {}
+      novelId,
+      parseInt(chapterNumber),
+      config,
+      userGuidance || ''
     );
     res.json({ success: true, data: result });
   } catch (error) {
@@ -43,15 +43,15 @@ router.post('/:novelId/chapters/:chapterNumber/finalize', async (req, res) => {
 
     // 验证必填字段
     if (!config || !config.provider || !config.apiKey) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: '缺少LLM配置',
         required: ['config.provider', 'config.apiKey']
       });
     }
 
     const result = await chapterService.finalizeChapter(
-      novelId, 
-      parseInt(chapterNumber), 
+      novelId,
+      parseInt(chapterNumber),
       config
     );
     res.json({ success: true, data: result });
@@ -66,10 +66,10 @@ router.get('/:novelId/chapters/:chapterNumber', async (req, res) => {
   try {
     const { novelId, chapterNumber } = req.params;
     const chapter = await chapterService.getChapterContent(
-      novelId, 
+      novelId,
       parseInt(chapterNumber)
     );
-    res.json({ success: true, data: chapter });
+    res.json({ success: true, data: { content: chapter.content, outline: chapter.outline, number: chapter.number } });
   } catch (error) {
     console.error('获取章节内容失败:', error);
     res.status(500).json({ error: error.message });

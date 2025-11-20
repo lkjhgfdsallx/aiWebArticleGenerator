@@ -230,18 +230,15 @@ async function fetchNovelInfo() {
 // 获取章节列表
 async function fetchChapters() {
   try {
+    // 获取章节列表和blueprint
     const { data } = await api.get(`/novel/${novelId}/chapters`)
-    // 将blueprint文本解析为章节数组
-    if (data && data.blueprint) {
-      // 简单解析章节目录，每行一章
-      const lines = data.blueprint.split('\n').filter(line => line.trim())
-      chapters.value = lines.map((line, index) => {
-        return {
-          number: index + 1,
-          title: line.trim(),
-          hasContent: false
-        }
-      })
+    
+    // 使用后端返回的章节列表
+    if (data && data.chapters) {
+      chapters.value = data.chapters;
+    } else {
+      // 如果没有返回章节数组，则创建空数组
+      chapters.value = [];
     }
   } catch (error) {
     ElMessage.error('获取章节列表失败')

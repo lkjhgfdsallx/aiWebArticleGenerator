@@ -19,7 +19,7 @@ router.post('/create', async (req, res) => {
 
     // 验证必填字段
     if (!title || !genre || !topic || !numChapters || !wordNumber) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: '缺少必填字段',
         required: ['title', 'genre', 'topic', 'numChapters', 'wordNumber']
       });
@@ -52,7 +52,7 @@ router.post('/:novelId/architecture', async (req, res) => {
 
     // 验证必填字段
     if (!config || !config.provider || !config.apiKey) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: '缺少LLM配置',
         required: ['config.provider', 'config.apiKey']
       });
@@ -71,11 +71,11 @@ router.get('/:novelId/architecture', async (req, res) => {
   try {
     const { novelId } = req.params;
     const architecture = await novelService.getArchitecture(novelId);
-    
+
     if (!architecture) {
       return res.json({ success: true, data: { architecture: '', message: '小说架构尚未生成' } });
     }
-    
+
     res.json({ success: true, data: { architecture } });
   } catch (error) {
     console.error('获取小说架构失败:', error);
@@ -88,11 +88,11 @@ router.get('/:novelId/blueprint', async (req, res) => {
   try {
     const { novelId } = req.params;
     const blueprint = await novelService.getBlueprint(novelId);
-    
+
     if (!blueprint) {
       return res.json({ success: true, data: { blueprint: '', message: '章节目录尚未生成' } });
     }
-    
+
     res.json({ success: true, data: { blueprint } });
   } catch (error) {
     console.error('获取章节目录失败:', error);
@@ -108,7 +108,7 @@ router.post('/:novelId/blueprint', async (req, res) => {
 
     // 验证必填字段
     if (!config || !config.provider || !config.apiKey) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: '缺少LLM配置',
         required: ['config.provider', 'config.apiKey']
       });
@@ -149,13 +149,61 @@ router.get('/', async (req, res) => {
 router.get('/:novelId/chapters', async (req, res) => {
   try {
     const { novelId } = req.params;
+
+    // 获取小说基本信息
+    const novelInfo = await novelService.getNovelInfo(novelId);
+    const numChapters = novelInfo.numChapters;
+
+    // 获取章节目录
     const blueprint = await novelService.getBlueprint(novelId);
-    
-    if (!blueprint) {
-      return res.json({ success: true, data: { blueprint: '', message: '章节目录尚未生成' } });
+
+    // 获取章节服务实例
+    const ChapterService = require('../services/chapterService');
+    const chapterService = new ChapterService();
+
+    // 获取已创建的章节列表
+    const existingChapters = await chapterService.getChapterList(novelId);
+
+    // 构建章节列表
+    const chapters = [];
+
+    if (blueprint) {
+      // 解析章节目录
+      const lines = blueprint.split('\n').filter(line => line.trim());
+
+      // 使用小说的章节数量作为基准
+      for (let i = 1; i <= numChapters; i++) {
+        // 查找对应的章节标题
+        const chapterLine = lines.find(line => line.includes(`第${i}章`));
+
+        // 检查该章节是否有内容
+        const hasContent = existingChapters.some(ch => ch.number === i);
+
+        chapters.push({
+          number: i,
+          title: chapterLine ? chapterLine.trim() : `第${i}章`,
+          hasContent: hasContent
+        });
+      }
+    } else {
+      // 如果没有blueprint，只根据章节数创建基本章节列表
+      for (let i = 1; i <= numChapters; i++) {
+        // 检查该章节是否有内容
+        const hasContent = existingChapters.some(ch => ch.number === i);
+
+        chapters.push({
+          number: i,
+          title: `第${i}章`,
+          hasContent: hasContent
+        });
+      }
     }
-    
-    res.json({ success: true, data: { blueprint } });
+
+    if (!blueprint) {
+      return res.json({ success: true, data: { chapters, blueprint: '', message: '章节目录尚未生成' } });
+    }
+
+    res.json({ success: true, data: { chapters, blueprint } });
   } catch (error) {
     console.error('获取章节列表失败:', error);
     res.status(500).json({ error: error.message });

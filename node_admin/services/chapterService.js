@@ -26,10 +26,10 @@ class ChapterService {
    * @param {string} novelId - 小说ID
    * @param {number} chapterNumber - 章节号
    * @param {object} config - LLM配置
-   * @param {object} chapterParams - 章节参数
+   * @param {string} userGuidance - 用户指导
    * @returns {object} - 生成结果
    */
-  async generateChapterDraft(novelId, chapterNumber, config, chapterParams) {
+  async generateChapterDraft(novelId, chapterNumber, config, userGuidance = '') {
     try {
       const novelPath = path.join(this.novelsPath, novelId);
       const chaptersPath = path.join(novelPath, 'chapters');
@@ -71,6 +71,16 @@ class ChapterService {
         maxTokens: config.maxTokens
       });
 
+      // 创建默认的chapterParams对象
+      const chapterParams = {
+        wordNumber: 3000,
+        charactersInvolved: '',
+        keyItems: '',
+        sceneLocation: '',
+        timeConstraint: '',
+        userGuidance: userGuidance || ''
+      };
+
       // 如果是第一章，使用第一章提示词
       let prompt;
       if (chapterNumber === 1) {
@@ -88,7 +98,7 @@ class ChapterService {
           .replace('{key_items}', chapterParams.keyItems || '')
           .replace('{scene_location}', chapterParams.sceneLocation || '')
           .replace('{time_constraint}', chapterParams.timeConstraint || '')
-          .replace('{user_guidance}', chapterParams.userGuidance || '')
+          .replace('{user_guidance}', userGuidance || chapterParams.userGuidance || '')
           .replace('{novel_setting}', architecture);
       } else {
         // 获取前几章内容
@@ -115,7 +125,7 @@ class ChapterService {
         prompt = prompts.nextChapterDraftPrompt
           .replace('{global_summary}', globalSummary)
           .replace('{previous_chapter_excerpt}', previousChapter.slice(-800))
-          .replace('{user_guidance}', chapterParams.userGuidance || '')
+          .replace('{user_guidance}', userGuidance || chapterParams.userGuidance || '')
           .replace('{character_state}', characterState)
           .replace('{short_summary}', chapterSummary)
           .replace('{novel_number}', chapterNumber)

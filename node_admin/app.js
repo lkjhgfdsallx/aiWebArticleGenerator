@@ -29,8 +29,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // 路由
 app.use('/api/config', configRouter);
 app.use('/api/novel', novelRouter);
-app.use('/api/chapter', chapterRouter);
-app.use('/api/knowledge', knowledgeRouter);
+app.use('/api/novel', chapterRouter);
+app.use('/api/novel', knowledgeRouter);
 app.use('/api/user', userRouter);
 
 // 健康检查端点

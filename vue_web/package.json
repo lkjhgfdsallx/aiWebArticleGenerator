@@ -16,7 +16,7 @@
     "axios": "^1.6.2",
     "element-plus": "^2.4.4",
     "@element-plus/icons-vue": "^2.1.0",
-    "monaco-editor": "^0.44.0",
+
     "js-cookie": "^3.0.5"
   },
   "devDependencies": {
@@ -28,6 +28,7 @@
     "prettier": "^3.0.3",
     "sass": "^1.69.5",
     "unplugin-auto-import": "^0.16.7",
-    "unplugin-vue-components": "^0.25.2"
+    "unplugin-vue-components": "^0.25.2",
+
   }
 }

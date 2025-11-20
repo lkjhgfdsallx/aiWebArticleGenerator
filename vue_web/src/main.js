@@ -9,6 +9,16 @@ import App from './App.vue'
 import router from './router'
 import './style.css'
 
+// 配置Monaco Editor的worker
+import loader from '@monaco-editor/loader'
+import * as monaco from 'monaco-editor'
+
+loader.config({ monaco })
+
+loader.init().then(monaco => {
+  // 这里可以添加一些全局配置
+})
+
 const app = createApp(App)
 
 // 注册所有图标

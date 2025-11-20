@@ -120,7 +120,7 @@
 
       <el-main class="main-content">
         <div class="editor-container">
-          <div ref="editor" class="editor"></div>
+          <SimpleTextEditor ref="editorRef" v-model="editorContent" class="editor" />
         </div>
       </el-main>
     </el-container>
@@ -132,7 +132,7 @@ import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
-import * as monaco from 'monaco-editor'
+import SimpleTextEditor from '@/components/SimpleTextEditor.vue'
 import api from '@/utils/api'
 
 const route = useRoute()
@@ -157,24 +157,17 @@ const generating = ref(false)
 const finalizing = ref(false)
 
 // 编辑器实例
-let editor = null
-const editorElement = ref(null)
+const editorRef = ref(null)
+// 编辑器内容
+const editorContent = ref('')
 
-// 初始化Monaco编辑器
+// 初始化编辑器
 function initEditor() {
   nextTick(() => {
-    if (editorElement.value) {
-      editor = monaco.editor.create(editorElement.value, {
-        value: '',
-        language: 'plaintext',
-        theme: 'vs-dark',
-        automaticLayout: true,
-        wordWrap: 'on',
-        minimap: { enabled: true },
-        scrollBeyondLastLine: false,
-        fontSize: 14,
-        lineHeight: 1.6
-      })
+    if (editorRef.value) {
+      // 初始化后尝试加载章节内容
+      fetchChapterContent()
+        
     }
   })
 }
@@ -183,25 +176,66 @@ function initEditor() {
 async function fetchChapterInfo() {
   try {
     // 从小说目录解析章节信息
-    const { data } = await api.get(`/novel/${novelId}/blueprint`)
-    const blueprintText = data.blueprint
+    const response = await api.get(`/novel/${novelId}/blueprint`)
+    console.log('API响应:', response)
+    console.log('API响应类型:', typeof response)
+    
+    // 获取blueprint文本，处理各种可能的响应格式
+    let blueprintText = ''
+    if (typeof response === 'string') {
+      // 尝试解析JSON字符串
+      try {
+        const parsedResponse = JSON.parse(response)
+        if (parsedResponse && parsedResponse.data && parsedResponse.data.blueprint) {
+          blueprintText = parsedResponse.data.blueprint
+        }
+      } catch (e) {
+        console.error('解析响应JSON失败:', e)
+        blueprintText = response // 如果解析失败，直接使用原始字符串
+      }
+    } else if (response && typeof response === 'object' && response.data && typeof response.data === 'string') {
+      blueprintText = response.data
+    } else if (response && typeof response === 'object' && response.blueprint) {
+      blueprintText = response.blueprint
+    } else if (response && typeof response === 'object' && response.data && response.data.blueprint) {
+      blueprintText = response.data.blueprint
+    }
 
-    // 使用正则表达式提取章节信息
-    const chapterRegex = new RegExp(`第${chapterNumber}章\s*-\s*([^\n]+)\s*本章定位：([^\n]+)\s*核心作用：([^\n]+)\s*悬念密度：([^\n]+)\s*伏笔操作：([^\n]+)\s*认知颠覆：([^\n]+)\s*本章简述：([^\n]+)`, 'g')
-    const match = chapterRegex.exec(blueprintText)
-
-    if (match) {
+    // 使用字符串分割提取章节信息
+    console.log('章节号:', chapterNumber)
+    console.log('blueprint文本:', blueprintText)
+    
+    // 按章节分割blueprint文本
+    const chapters = blueprintText.split(/\n\n/)
+    const targetChapter = chapters.find(ch => ch.includes(`第${chapterNumber}章`))
+    
+    console.log('目标章节:', targetChapter)
+    
+    if (targetChapter) {
+      // 提取各字段
+      const titleMatch = targetChapter.match(/第${chapterNumber}章\s*-\s*([^\n]+)/)
+      const roleMatch = targetChapter.match(/本章定位：([^\n]+)/)
+      const purposeMatch = targetChapter.match(/核心作用：([^\n]+)/)
+      const suspenseMatch = targetChapter.match(/悬念密度：([^\n]+)/)
+      const foreshadowingMatch = targetChapter.match(/伏笔操作：([^\n]+)/)
+      const plotTwistMatch = targetChapter.match(/认知颠覆：([^\n]+)/)
+      const summaryMatch = targetChapter.match(/本章简述：([^\n]+)/)
+      
       chapterInfo.value = {
-        title: match[1].trim(),
-        role: match[2].trim(),
-        purpose: match[3].trim(),
-        suspenseLevel: match[4].trim(),
-        foreshadowing: match[5].trim(),
-        plotTwistLevel: match[6].trim(),
-        summary: match[7].trim()
+        title: titleMatch ? titleMatch[1].trim() : `第${chapterNumber}章`,
+        role: roleMatch ? roleMatch[1].trim() : '未设置',
+        purpose: purposeMatch ? purposeMatch[1].trim() : '未设置',
+        suspenseLevel: suspenseMatch ? suspenseMatch[1].trim() : '未设置',
+        foreshadowing: foreshadowingMatch ? foreshadowingMatch[1].trim() : '未设置',
+        plotTwistLevel: plotTwistMatch ? plotTwistMatch[1].trim() : '未设置',
+        summary: summaryMatch ? summaryMatch[1].trim() : '未设置'
       }
     }
+    
+    // 确保数据已更新到视图
+    console.log('章节信息已更新:', chapterInfo.value)
   } catch (error) {
+    console.error('获取章节信息失败:', error)
     ElMessage.error('获取章节信息失败')
   }
 }
@@ -209,15 +243,15 @@ async function fetchChapterInfo() {
 // 获取章节内容
 async function fetchChapterContent() {
   try {
-    const { data } = await api.get(`/novel/${novelId}/chapters/${chapterNumber}`)
+    const response = await api.get(`/novel/${novelId}/chapters/${chapterNumber}`)
+    console.log('章节内容响应:', response) // 添加调试日志
 
-    if (data.content) {
+    if (response && response.data && response.data.content) {
       hasDraft.value = true
-      if (editor) {
-        editor.setValue(data.content)
-      }
+      editorContent.value = response.data.content
     }
   } catch (error) {
+    console.error('获取章节内容失败:', error) // 添加错误日志
     ElMessage.error('获取章节内容失败')
   }
 }
@@ -227,21 +261,42 @@ async function generateDraft() {
   try {
     generating.value = true
 
-    const { data } = await api.post(`/novel/${novelId}/chapters/${chapterNumber}/draft`, {
-      config: {
-        provider: 'openai', // 应该从全局配置获取
-        apiKey: '', // 应该从全局配置获取
-        baseURL: '', // 应该从全局配置获取
-        model: '', // 应该从全局配置获取
-        temperature: 0.7,
-        maxTokens: 4096
-      },
-      chapterParams
+    // 从本地存储获取LLM配置
+    let llmConfig = {
+      provider: 'openai',
+      apiKey: '',
+      baseURL: '',
+      model: '',
+      temperature: 0.7,
+      maxTokens: 4096,
+      timeout: 600
+    }
+
+    try {
+      const savedConfig = localStorage.getItem('ai_novel_generator_config')
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig)
+        if (config.llmConfigs && config.llmConfigs.default) {
+          const defaultConfig = config.llmConfigs.default
+          llmConfig.provider = defaultConfig.interfaceFormat || 'openai'
+          llmConfig.model = defaultConfig.modelName || 'gpt-4'
+          llmConfig.temperature = defaultConfig.temperature || 0.7
+          llmConfig.maxTokens = defaultConfig.maxTokens || 4096
+          llmConfig.apiKey = defaultConfig.apiKey || ''
+          llmConfig.baseURL = defaultConfig.baseUrl || 'https://api.openai.com/v1'
+        }
+      }
+    } catch (error) {
+      console.error('加载配置失败:', error)
+    }
+
+    const response = await api.post(`/novel/${novelId}/chapters/${chapterNumber}/draft`, {
+      userGuidance: chapterParams.userGuidance || '',
+      config: llmConfig
     })
 
-    if (editor) {
-      editor.setValue(data.content)
-    }
+    const data = response.data || response
+    editorContent.value = data.content
 
     hasDraft.value = true
     ElMessage.success('章节草稿生成成功')
@@ -257,7 +312,7 @@ async function finalizeChapter() {
   try {
     finalizing.value = true
 
-    const { data } = await api.post(`/novel/${novelId}/chapters/${chapterNumber}/finalize`, {
+    const response = await api.post(`/novel/${novelId}/chapters/${chapterNumber}/finalize`, {
       config: {
         provider: 'openai', // 应该从全局配置获取
         apiKey: '', // 应该从全局配置获取
@@ -287,8 +342,8 @@ async function searchKnowledge() {
   }
 
   try {
-    const { data } = await api.get(`/novel/${novelId}/knowledge/search?query=${encodeURIComponent(knowledgeQuery.value)}`)
-    knowledgeResults.value = data
+    const response = await api.get(`/novel/${novelId}/knowledge/search?query=${encodeURIComponent(knowledgeQuery.value)}`)
+    knowledgeResults.value = response.data || response
   } catch (error) {
     ElMessage.error('搜索知识库失败')
   }
@@ -296,47 +351,24 @@ async function searchKnowledge() {
 
 // 插入知识内容
 function insertKnowledge(content) {
-  if (editor) {
-    const selection = editor.getSelection()
-    const model = editor.getModel()
-
-    if (selection.isEmpty()) {
-      // 没有选中内容，在光标位置插入
-      const position = editor.getPosition()
-      model.pushEditOperations(
-        [{ range: new monaco.Range(position, position), text: `
-
-${content}
-
-` }],
-        ''
-      )
-    } else {
-      // 有选中内容，替换选中的内容
-      model.pushEditOperations(
-        [{ range: selection, text: content }],
-        ''
-      )
-    }
-
+  if (editorRef.value) {
+    // 使用SimpleTextEditor的insertText方法
+    editorRef.value.insertText(`\n\n${content}\n\n`)
     // 聚焦到编辑器
-    editor.focus()
+    editorRef.value.focus()
   }
 }
 
 // 组件挂载时初始化
-onMounted(() => {
+onMounted(async () => {
+  // 先获取章节信息
+  await fetchChapterInfo()
+  // 然后初始化编辑器（编辑器初始化后会自动加载章节内容）
   initEditor()
-  fetchChapterInfo()
-  fetchChapterContent()
 })
 
 // 组件卸载时清理
-onUnmounted(() => {
-  if (editor) {
-    editor.dispose()
-  }
-})
+// SimpleTextEditor组件会自动清理，无需手动处理
 </script>
 
 <style scoped>
