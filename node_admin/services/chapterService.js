@@ -84,6 +84,32 @@ class ChapterService {
       // 如果是第一章，使用第一章提示词
       let prompt;
       if (chapterNumber === 1) {
+        // 获取角色状态和全局摘要
+        let characterState = '';
+        let globalSummary = '';
+        
+        if (await fs.pathExists(characterStateFile)) {
+          characterState = await fs.readFile(characterStateFile, 'utf8');
+        }
+        
+        if (await fs.pathExists(globalSummaryFile)) {
+          globalSummary = await fs.readFile(globalSummaryFile, 'utf8');
+        }
+        
+        // 获取整篇小说的章节目录信息
+        const allChaptersInfo = this.getAllChaptersInfo(blueprint);
+        
+        // 检索相关知识
+        const relevantContext = await this.getRelevantKnowledge(
+          novelId,
+          chapterInfo,
+          chapterParams
+        );
+        
+        // 获取下一章信息
+        const nextChapterInfo = this.parseChapterInfo(blueprint, chapterNumber + 1);
+        
+        // 构建增强的第一章提示词
         prompt = prompts.firstChapterDraftPrompt
           .replace('{novel_number}', chapterNumber)
           .replace('{chapter_title}', chapterInfo.title)
@@ -100,6 +126,44 @@ class ChapterService {
           .replace('{time_constraint}', chapterParams.timeConstraint || '')
           .replace('{user_guidance}', userGuidance || chapterParams.userGuidance || '')
           .replace('{novel_setting}', architecture);
+          
+        // 创建增强的第一章提示词
+        const enhancedPrompt = `
+
+
+===== 全局背景信息（仅供理解上下文，不用于展开情节）=====
+
+【角色状态】
+${characterState}
+
+【全局摘要】
+${globalSummary}
+
+【整篇小说章节目录】（仅供参考，不要提前展开）
+${allChaptersInfo}
+
+【下一章信息】（仅供参考，不要提前展开）
+第${nextChapterInfo.number}章《${nextChapterInfo.title}》
+本章定位：${nextChapterInfo.role}
+核心作用：${nextChapterInfo.purpose}
+悬念密度：${nextChapterInfo.suspenseLevel}
+伏笔操作：${nextChapterInfo.foreshadowing}
+认知颠覆：${nextChapterInfo.plotTwistLevel}
+本章简述：${nextChapterInfo.summary}
+
+【知识库参考】
+${relevantContext}
+
+===== 严格限制 =====
+1. 你必须只生成第一章内容，绝对不能提前展开后续章节的情节
+2. 你可以使用全局信息来理解背景和设定，但不要在第一章中展开未来章节的内容
+3. 你可以在第一章中为后续章节埋下伏笔，但不要揭示这些伏笔的后续发展
+4. 不要出现"第二章"、"接下来"、"后来"等指向未来章节的词语
+5. 确保第一章内容完整，不要留下"未完待续"的暗示
+`;
+        
+        // 将增强提示词添加到原始提示词后面
+        prompt += enhancedPrompt;
       } else {
         // 获取前几章内容
         const recentChapters = await this.getRecentChapters(chaptersPath, chapterNumber, 3);
@@ -154,7 +218,14 @@ class ChapterService {
 
       // 生成章节内容
       console.info(`生成章节草稿 - 小说ID: ${novelId}, 章节: ${chapterNumber}`);
-      const chapterContent = await llmAdapter.invoke(prompt);
+      let chapterContent;
+      
+      // 如果是第一章，使用专门的invokeFirstChapter方法
+      if (chapterNumber === 1) {
+        chapterContent = await llmAdapter.invokeFirstChapter(prompt);
+      } else {
+        chapterContent = await llmAdapter.invoke(prompt);
+      }
 
       // 保存章节草稿
       const chapterFile = path.join(chaptersPath, `chapter_${chapterNumber}.txt`);
@@ -537,6 +608,44 @@ ${chapterContent}
     } catch (error) {
       console.error('保存章节内容失败:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 获取整篇小说的章节目录信息
+   * @param {string} blueprint - 章节目录文本
+   * @returns {string} - 所有章节信息
+   */
+  getAllChaptersInfo(blueprint) {
+    try {
+      // 使用正则表达式匹配所有章节信息
+      const chapterRegex = /第(\d+)章\s*-\s*([^\n]+)\s*本章定位：([^\n]+)\s*核心作用：([^\n]+)\s*悬念密度：([^\n]+)\s*伏笔操作：([^\n]+)\s*认知颠覆：([^\n]+)\s*本章简述：([^\n]+)/g;
+      let match;
+      let chaptersInfo = '';
+      
+      while ((match = chapterRegex.exec(blueprint)) !== null) {
+        const chapterNum = match[1];
+        const title = match[2].trim();
+        const role = match[3].trim();
+        const purpose = match[4].trim();
+        const suspenseLevel = match[5].trim();
+        const foreshadowing = match[6].trim();
+        const plotTwistLevel = match[7].trim();
+        const summary = match[8].trim();
+        
+        chaptersInfo += `第${chapterNum}章《${title}》\n`;
+        chaptersInfo += `本章定位：${role}\n`;
+        chaptersInfo += `核心作用：${purpose}\n`;
+        chaptersInfo += `悬念密度：${suspenseLevel}\n`;
+        chaptersInfo += `伏笔操作：${foreshadowing}\n`;
+        chaptersInfo += `认知颠覆：${plotTwistLevel}\n`;
+        chaptersInfo += `本章简述：${summary}\n\n`;
+      }
+      
+      return chaptersInfo;
+    } catch (error) {
+      console.error('获取所有章节信息失败:', error);
+      return '获取章节信息失败';
     }
   }
 

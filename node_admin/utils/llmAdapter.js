@@ -16,6 +16,42 @@ class BaseLLMAdapter {
   async invoke(prompt) {
     throw new Error('Subclasses must implement invoke method');
   }
+  
+  /**
+   * 专门用于第一章生成的方法，添加更严格的控制
+   * @param {string} prompt - 提示词
+   * @returns {string} - 生成的文本
+   */
+  async invokeFirstChapter(prompt) {
+    // 为第一章生成添加系统消息
+    const systemMessage = `你是一位专业的小说作家，现在正在创作小说的第一章。
+
+【严格限制】
+1. 你必须只生成第一章内容，绝对不能提前展开后续章节的情节
+2. 你可以使用全局信息来理解背景和设定，但不要在第一章中展开未来章节的内容
+3. 你可以在第一章中为后续章节埋下伏笔，但不要揭示这些伏笔的后续发展
+4. 不要出现"第二章"、"接下来"、"后来"等指向未来章节的词语
+5. 确保第一章内容完整，不要留下"未完待续"的暗示
+
+【创作要求】
+- 只专注于第一章内容的创作
+- 确保内容符合小说设定和第一章的定位
+- 保持文笔流畅，情节紧凑
+- 确保字数符合要求`;
+    
+    return this.invokeWithSystemMessage(prompt, systemMessage);
+  }
+  
+  /**
+   * 使用系统消息调用LLM
+   * @param {string} prompt - 用户提示词
+   * @param {string} systemMessage - 系统消息
+   * @returns {string} - 生成的文本
+   */
+  async invokeWithSystemMessage(prompt, systemMessage) {
+    // 默认实现，子类可以覆盖
+    return this.invoke(`${systemMessage}\n\n${prompt}`);
+  }
 }
 
 class OpenAIAdapter extends BaseLLMAdapter {
@@ -29,17 +65,32 @@ class OpenAIAdapter extends BaseLLMAdapter {
   }
 
   async invoke(prompt) {
+    return this.invokeWithSystemMessage(prompt);
+  }
+  
+  async invokeWithSystemMessage(prompt, systemMessage = null) {
     try {
+      const messages = [];
+      
+      // 如果有系统消息，添加到消息数组开头
+      if (systemMessage) {
+        messages.push({
+          role: "system",
+          content: systemMessage
+        });
+      }
+      
+      // 添加用户消息
+      messages.push({
+        role: "user",
+        content: prompt
+      });
+      
       const response = await axios.post(
         this.baseURL,
         {
           model: this.model,
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
+          messages: messages,
           temperature: this.temperature,
           max_tokens: this.maxTokens
         },
@@ -83,17 +134,32 @@ class DeepSeekAdapter extends BaseLLMAdapter {
   }
 
   async invoke(prompt) {
+    return this.invokeWithSystemMessage(prompt);
+  }
+  
+  async invokeWithSystemMessage(prompt, systemMessage = null) {
     try {
+      const messages = [];
+      
+      // 如果有系统消息，添加到消息数组开头
+      if (systemMessage) {
+        messages.push({
+          role: "system",
+          content: systemMessage
+        });
+      }
+      
+      // 添加用户消息
+      messages.push({
+        role: "user",
+        content: prompt
+      });
+      
       const response = await axios.post(
         this.baseURL,
         {
           model: this.model,
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
+          messages: messages,
           extra_body: {
             reasoning: {
               enabled: true
@@ -207,16 +273,31 @@ class AzureOpenAIAdapter extends BaseLLMAdapter {
   }
 
   async invoke(prompt) {
+    return this.invokeWithSystemMessage(prompt);
+  }
+  
+  async invokeWithSystemMessage(prompt, systemMessage = null) {
     try {
+      const messages = [];
+      
+      // 如果有系统消息，添加到消息数组开头
+      if (systemMessage) {
+        messages.push({
+          role: "system",
+          content: systemMessage
+        });
+      }
+      
+      // 添加用户消息
+      messages.push({
+        role: "user",
+        content: prompt
+      });
+      
       const response = await axios.post(
         `${this.baseURL}/openai/deployments/${this.model}/chat/completions?api-version=${this.apiVersion}`,
         {
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
+          messages: messages,
           temperature: this.temperature,
           max_tokens: this.maxTokens
         },
