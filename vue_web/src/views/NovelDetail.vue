@@ -18,6 +18,12 @@
             生成目录
           </el-button>
         </el-button-group>
+        <el-button
+          type="success"
+          @click="openKnowledgeBase"
+        >
+          知识库管理
+        </el-button>
       </template>
     </el-page-header>
 
@@ -394,6 +400,11 @@ function editCharacterState() {
 function editGlobalSummary() {
   activeTab.value = 'summary'
   // 这里可以打开一个编辑器对话框
+}
+
+// 打开知识库
+function openKnowledgeBase() {
+  router.push(`/knowledge/${novelId}`)
 }
 
 // 组件挂载时获取数据

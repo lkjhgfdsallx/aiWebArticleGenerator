@@ -30,6 +30,12 @@ const routes = [
     component: () => import('@/views/ChapterEditor.vue'),
     meta: { requiresAuth: true }
   },
+  {
+    path: '/knowledge/:id',
+    name: 'KnowledgeBase',
+    component: () => import('@/views/KnowledgeBase.vue'),
+    meta: { requiresAuth: true }
+  },
 
 ]
 

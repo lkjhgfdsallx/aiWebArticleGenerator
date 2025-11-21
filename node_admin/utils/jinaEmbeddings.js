@@ -46,10 +46,27 @@ class JinaEmbeddings {
     const maxRetries = 3;
     try {
       // 准备请求数据
+      // 确保文本是字符串数组，并过滤空文本
+      const validTexts = texts.filter(text => text && typeof text === 'string' && text.trim().length > 0);
+      
+      if (validTexts.length === 0) {
+        throw new Error('没有有效的文本可以处理');
+      }
+      
+      // 限制文本长度，Jina API可能有长度限制
+      const maxLength = 8000; // 保守估计的字符限制
+      const processedTexts = validTexts.map(text => {
+        if (text.length > maxLength) {
+          console.warn(`文本过长，将被截断: ${text.length} > ${maxLength}`);
+          return text.substring(0, maxLength);
+        }
+        return text;
+      });
+      
       const requestData = {
         model: this.model,
         task: this.task,
-        input: texts
+        input: processedTexts
       };
 
       // 使用更详细的配置
@@ -96,7 +113,12 @@ class JinaEmbeddings {
       if (error.code === 'ECONNABORTED') {
         errorMessage = 'Jina AI API 请求超时，请检查网络连接或稍后重试';
       } else if (error.response) {
-        errorMessage = `Jina AI API 错误: ${error.response.status} - ${error.response.data?.error?.message || error.response.data?.message || error.message}`;
+        // 处理400错误，通常是请求参数问题
+        if (error.response.status === 400) {
+          errorMessage = `Jina AI API 请求参数错误: ${error.response.data?.error?.message || error.response.data?.message || '请检查输入文本格式和长度'}`;
+        } else {
+          errorMessage = `Jina AI API 错误: ${error.response.status} - ${error.response.data?.error?.message || error.response.data?.message || error.message}`;
+        }
       } else if (error.request) {
         errorMessage = 'Jina AI API 网络错误，请检查网络连接';
       } else {

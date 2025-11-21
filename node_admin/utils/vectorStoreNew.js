@@ -1,3 +1,4 @@
+
 /**
  * 向量数据库工具类
  * 使用MemoryVectorStore替代Faiss和ChromaDB，解决Windows平台兼容性问题
@@ -42,6 +43,11 @@ class VectorStoreManager {
       default:
         throw new Error(`不支持的嵌入模型提供商: ${this.embeddingsProvider}`);
     }
+
+    // 验证嵌入对象是否正确初始化
+    if (!this.embeddings || typeof this.embeddings.embedQuery !== 'function') {
+      throw new Error('嵌入对象初始化失败或缺少必要方法');
+    }
   }
 
   /**
@@ -78,13 +84,27 @@ class VectorStoreManager {
         return null;
       }
 
+      console.log(`准备加载向量存储: ${novelId}，包含 ${vectorData.documents.length} 个文档`);
+
       // 导入MemoryVectorStore
       let MemoryVectorStore;
       try {
         MemoryVectorStore = require('langchain/vectorstores/memory').MemoryVectorStore;
       } catch (e) {
-        const { MemoryVectorStore: MVStore } = require('langchain');
-        MemoryVectorStore = MVStore;
+        console.warn('尝试第一种导入方式失败:', e.message);
+        try {
+          const { MemoryVectorStore: MVStore } = require('langchain');
+          MemoryVectorStore = MVStore;
+        } catch (e2) {
+          console.warn('尝试第二种导入方式失败:', e2.message);
+          try {
+            // 尝试直接导入
+            MemoryVectorStore = require('langchain').MemoryVectorStore;
+          } catch (e3) {
+            console.error('所有导入MemoryVectorStore的方式都失败了:', e3.message);
+            return null;
+          }
+        }
       }
 
       // 创建内存向量存储实例
@@ -93,10 +113,41 @@ class VectorStoreManager {
       // 从保存的数据中重建文档
       if (vectorData.documents.length > 0) {
         const { Document } = require('@langchain/core/documents');
-        const documents = vectorData.documents.map(doc => 
-          new Document({ pageContent: doc.pageContent, metadata: doc.metadata })
-        );
-        await vectorStore.addDocuments(documents);
+        const documents = vectorData.documents.map(doc => {
+          // 确保文档内容不为空
+          const content = doc.pageContent || '';
+          const metadata = doc.metadata || {};
+          // 如果有向量数据，将其添加到元数据中
+          if (doc.vector) {
+            metadata.vector = doc.vector;
+          }
+          return new Document({ pageContent: content, metadata });
+        });
+
+        console.log(`准备添加 ${documents.length} 个文档到向量存储`);
+
+        try {
+          await vectorStore.addDocuments(documents);
+          console.log(`成功添加 ${documents.length} 个文档到向量存储`);
+        } catch (addError) {
+          console.error('添加文档到向量存储失败:', addError.message);
+          console.error('错误详情:', addError);
+
+          // 尝试逐个添加文档
+          console.log('尝试逐个添加文档...');
+          let successCount = 0;
+
+          for (let i = 0; i < documents.length; i++) {
+            try {
+              await vectorStore.addDocuments([documents[i]]);
+              successCount++;
+            } catch (docError) {
+              console.error(`添加文档 ${i} 失败:`, docError.message);
+            }
+          }
+
+          console.log(`成功添加 ${successCount}/${documents.length} 个文档`);
+        }
       }
 
       // 验证向量存储是否有效
@@ -109,6 +160,7 @@ class VectorStoreManager {
       return vectorStore;
     } catch (error) {
       console.error(`加载向量存储失败: ${error.message}`);
+      console.error('错误堆栈:', error.stack);
       return null;
     }
   }
@@ -237,6 +289,10 @@ class VectorStoreManager {
    */
   async addDocuments(novelId, texts, metadatas) {
     try {
+      // 确保向量存储目录存在
+      const storePath = path.join(this.vectorStorePath, novelId);
+      await fs.ensureDir(storePath);
+
       // 加载或创建向量存储
       let vectorStore = await this.loadVectorStore(novelId);
       if (!vectorStore) {
@@ -255,9 +311,8 @@ class VectorStoreManager {
       await vectorStore.addDocuments(documents);
 
       // 保存文档数据到磁盘
-      const storePath = path.join(this.vectorStorePath, novelId);
       const vectorDataPath = path.join(storePath, 'vector_data.json');
-      
+
       // 读取现有数据
       let vectorData;
       try {
@@ -272,16 +327,20 @@ class VectorStoreManager {
           documents: []
         };
       }
+
+      // 生成文档的向量
+      const embeddings = await this.embeddings.embedDocuments(texts);
       
       // 添加新文档
-      const newDocs = documents.map(doc => ({
+      const newDocs = documents.map((doc, i) => ({
         pageContent: doc.pageContent,
-        metadata: doc.metadata
+        metadata: doc.metadata,
+        vector: embeddings[i] // 保存向量数据
       }));
-      
+
       vectorData.documents = [...(vectorData.documents || []), ...newDocs];
       vectorData.updatedAt = new Date().toISOString();
-      
+
       // 保存到磁盘
       await fs.writeJson(vectorDataPath, vectorData);
 
@@ -317,14 +376,51 @@ class VectorStoreManager {
       // 执行相似性搜索
       let results;
       try {
-        results = await vectorStore.similaritySearch(query, { k: this.retrievalK });
+        // 使用正确的参数格式
+        results = await vectorStore.similaritySearch(query, this.retrievalK);
       } catch (searchError) {
         console.error(`相似性搜索失败: ${searchError.message}`);
+        console.error('错误详情:', searchError);
+
         // 尝试使用另一种搜索方法
         try {
-          results = await vectorStore.similaritySearch(query, this.retrievalK);
+          results = await vectorStore.similaritySearchWithScore(query, this.retrievalK);
+          // 如果使用similaritySearchWithScore，需要转换结果格式
+          if (results && Array.isArray(results)) {
+            results = results.map(([doc, score]) => doc);
+          }
         } catch (fallbackError) {
           console.error(`备用搜索方法也失败: ${fallbackError.message}`);
+
+          // 尝试直接从向量数据中搜索
+          try {
+            console.log('尝试直接从向量数据中搜索...');
+            const storePath = path.join(this.vectorStorePath, novelId);
+            const vectorDataPath = path.join(storePath, 'vector_data.json');
+
+            if (await fs.pathExists(vectorDataPath)) {
+              const vectorData = await fs.readJson(vectorDataPath);
+
+              if (vectorData && vectorData.documents && Array.isArray(vectorData.documents)) {
+                // 简单的文本匹配搜索作为后备
+                const lowerQuery = query.toLowerCase();
+                const matchedDocs = vectorData.documents.filter(doc => 
+                  doc.pageContent && doc.pageContent.toLowerCase().includes(lowerQuery)
+                );
+
+                console.log(`文本匹配搜索找到 ${matchedDocs.length} 个结果`);
+
+                // 转换为Document对象
+                const { Document } = require('@langchain/core/documents');
+                return matchedDocs.map(doc => 
+                  new Document({ pageContent: doc.pageContent, metadata: doc.metadata })
+                );
+              }
+            }
+          } catch (directSearchError) {
+            console.error(`直接搜索也失败: ${directSearchError.message}`);
+          }
+
           return [];
         }
       }
@@ -339,6 +435,7 @@ class VectorStoreManager {
       return results;
     } catch (error) {
       console.error(`向量检索失败: ${error.message}`);
+      console.error('错误堆栈:', error.stack);
       return [];
     }
   }

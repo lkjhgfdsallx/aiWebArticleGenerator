@@ -22,7 +22,7 @@ api.interceptors.request.use(
     if (config.method === 'post' && 
         (config.url.includes('/novel/') || 
          config.url.includes('/chapter/') || 
-         config.url.includes('/knowledge/'))) {
+         config.url.includes('/knowledge/')) && !config.url.includes('/import')) {
       const llmConfig = getCurrentLLMConfig()
       if (llmConfig && !config.data.config) {
         config.data = {
