@@ -15,7 +15,7 @@ class ChapterService {
     this.vectorStoreManager = new VectorStoreManager({
       embeddingsProvider: process.env.EMBEDDING_PROVIDER || 'openai',
       embeddingsModel: process.env.EMBEDDING_MODEL || 'text-embedding-ada-002',
-      vectorStorePath: process.env.VECTOR_DB_PATH || './vectorstore',
+      vectorStorePath: path.join(__dirname, '../novels'), // 使用与knowledge.js相同的路径
       retrievalK: parseInt(process.env.EMBEDDING_RETRIEVAL_K) || 4,
       openaiApiKey: process.env.OPENAI_API_KEY
     });

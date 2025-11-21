@@ -18,7 +18,7 @@ class NovelService {
     this.vectorStoreManager = new VectorStoreManager({
       embeddingsProvider: process.env.EMBEDDING_PROVIDER || 'jina',
       embeddingsModel: process.env.EMBEDDING_MODEL || 'jina-embeddings-v3',
-      vectorStorePath: process.env.VECTOR_DB_PATH || './vectorstore',
+      vectorStorePath: path.join(__dirname, '../novels'), // 使用与knowledge.js相同的路径
       retrievalK: parseInt(process.env.EMBEDDING_RETRIEVAL_K) || 4,
       openaiApiKey: process.env.OPENAI_API_KEY,
       jinaApiKey: process.env.JINA_API_KEY,
